@@ -1,0 +1,44 @@
+body {
+	margin: 20px;
+	padding: 0;
+	color: white;
+	background-color: #A11B26;
+}
+
+a, a:visited {
+	color: white;
+}
+
+#page {
+	width: 470px;
+	margin: 0 auto;
+	padding: 0;
+}
+
+#nav {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+#nav li {
+	margin: 0 0 10px 0;
+	padding: 0;
+}
+
+#nav li a, #nav li a:visited {
+	display: block;
+	background-color: #79141D;
+	border: 10px solid #79141D;
+}
+
+#nav li a:hover, #nav li a:active {
+	background-color: #510E13;
+	border-color: #510E13;
+}
+
+#nav li a img, #nav li a:visited img {
+	width: 450px;
+	height: 200px;
+	border-style: none;
+}

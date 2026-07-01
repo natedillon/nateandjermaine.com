@@ -1,0 +1,35 @@
+html {
+  box-sizing: border-box;
+  font-size: 62.5%;
+}
+
+body {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+}
+
+a {
+  --link-text-decoration-alpha: 0.3;
+
+  color: var(--link-color);
+  text-decoration-color: oklch(
+    from var(--link-color) l c h / var(--link-text-decoration-alpha)
+  );
+  transition: text-decoration-color 0.1s linear;
+
+  &:visited {
+    color: var(--link-color-visited);
+    text-decoration-color: oklch(
+      from var(--link-color-visited) l c h / var(--link-text-decoration-alpha)
+    );
+  }
+
+  &:hover {
+    --link-text-decoration-alpha: 1;
+  }
+}
+
+img {
+  max-width: 100%;
+}

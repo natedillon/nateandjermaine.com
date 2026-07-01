@@ -1,1 +1,14 @@
+# System
 .DS_Store
+
+# Environment variables
+.env
+
+# Node.js and npm
+node_modules
+
+# Astro
+.astro
+
+# Netlify
+.netlify

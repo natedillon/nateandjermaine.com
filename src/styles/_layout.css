@@ -1,0 +1,29 @@
+.site-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gutter-md);
+  min-height: calc(100dvh - (var(--gutter-lg) * 2));
+  margin: auto;
+  padding: var(--gutter-lg);
+}
+
+.site-header {
+  h1 {
+    margin: 0;
+    font-size: inherit;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+}
+
+.site-content {
+  flex-grow: 1;
+}
+
+.site-footer {
+  justify-self: flex-end;
+
+  p {
+    margin: 0;
+  }
+}

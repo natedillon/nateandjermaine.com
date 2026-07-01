@@ -1,7 +1,357 @@
 ---
+export const prerender = false;
+
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { Client, isFullPage } from '@notionhq/client';
+import type { RichTextItemResponse } from '@notionhq/client';
+import placeholder from '../../images/gift.svg';
+
+const notion = new Client({ auth: import.meta.env.NOTION_TOKEN });
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Render a Notion rich-text array to safe inline HTML.
+function renderRichText(richText: RichTextItemResponse[]): string {
+  return richText
+    .map((span) => {
+      let text = escapeHtml(span.plain_text);
+      const a = span.annotations;
+      if (a.code) text = `<code>${text}</code>`;
+      if (a.bold) text = `<strong>${text}</strong>`;
+      if (a.italic) text = `<em>${text}</em>`;
+      if (a.strikethrough) text = `<s>${text}</s>`;
+      if (a.underline) text = `<u>${text}</u>`;
+      if (span.href) text = `<a href="${escapeHtml(span.href)}">${text}</a>`;
+      return text;
+    })
+    .join('');
+}
+
+// Notion's 2025 API splits a database into one or more "data sources".
+// Look up the database's first data source, then query that.
+// TODO: Add the data source to .env to skip this lookup?
+const db = await notion.databases.retrieve({
+  database_id: import.meta.env.NOTION_DB_ID,
+});
+if (!('data_sources' in db)) {
+  throw new Error('Notion returned an incomplete database response.');
+}
+const dataSourceId = db.data_sources[0].id;
+
+const { results } = await notion.dataSources.query({
+  data_source_id: dataSourceId,
+  filter: {
+    property: 'Status',
+    status: { equals: 'Active' },
+  },
+});
+
+const items = results.filter(isFullPage).map((page) => {
+  const props = page.properties;
+
+  const nameProp = props.Name;
+  const name =
+    nameProp?.type === 'title'
+      ? nameProp.title.map((t) => t.plain_text).join('')
+      : '';
+
+  const priceProp = props.Price;
+  const price = priceProp?.type === 'number' ? priceProp.number : null;
+
+  const lowPriceProp = props['Low price'];
+  const lowPrice =
+    lowPriceProp?.type === 'number' ? lowPriceProp.number : null;
+
+  const urlProp = props.URL;
+  const url = urlProp?.type === 'url' ? urlProp.url : null;
+
+  const imagesProp = props.Images;
+  const images =
+    imagesProp?.type === 'files'
+      ? imagesProp.files.map((file) =>
+          file.type === 'external' ? file.external.url : file.file.url
+        )
+      : [];
+
+  const tagsProp = props.Tags;
+  const tags =
+    tagsProp?.type === 'multi_select'
+      ? tagsProp.multi_select.map((tag) => tag.name)
+      : [];
+
+  // "Links" is a text field holding Notion-formatted links. Use the span's
+  // text as the label when it differs from the URL; otherwise fall back to
+  // the link's domain.
+  const linksProp = props.Links;
+  const richText = linksProp?.type === 'rich_text' ? linksProp.rich_text : [];
+  const links: { href: string; label: string }[] = [];
+  for (const span of richText) {
+    if (!span.href) continue;
+    const href = span.href;
+    const label =
+      span.plain_text && span.plain_text !== href
+        ? span.plain_text
+        : new URL(href).hostname.replace(/^www\./, '');
+    links.push({ href, label });
+  }
+
+  // Display price as a range when both are present (e.g. "$50-100").
+  let priceLabel: string | null = null;
+  if (price != null && lowPrice != null) {
+    priceLabel = `$${lowPrice}–${price}`;
+  } else if (price != null) {
+    priceLabel = `$${price}`;
+  } else if (lowPrice != null) {
+    priceLabel = `$${lowPrice}`;
+  }
+
+  // "Notes" is a text field rendered as inline HTML.
+  const notesProp = props.Notes;
+  const notes =
+    notesProp?.type === 'rich_text' ? renderRichText(notesProp.rich_text) : '';
+
+  return { id: page.id, name, priceLabel, url, images, tags, links, notes };
+});
+
+// Cache the response at the CDN for 5 minutes to reduce Notion API calls.
+Astro.response.headers.set('Cache-Control', 'public, max-age=300');
+
+// Tags drive a filter bar; filtering happens client-side (see <script> below).
+const allTags = [...new Set(items.flatMap((item) => item.tags))].sort((a, b) =>
+  a.localeCompare(b, undefined, { sensitivity: 'base' })
+);
 ---
 
 <BaseLayout>
-  <h2>Wish Lists / Nate</h2>
+  <h2><a href="../">Wish lists</a> / Nate</h2>
+
+  {allTags.length > 0 && (
+    <nav class="tag-filter">
+      <ul>
+        <li>
+          <button type="button" data-tag="" class="is-active">All</button>
+        </li>
+        {allTags.map((tag) => (
+          <li>
+            <button type="button" data-tag={tag}>{tag}</button>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )}
+
+  <div class="wish-list list">
+    {items.map((item) => (
+      <article class="item" data-tags={JSON.stringify(item.tags)}>
+        <header class="header">
+          <h3 class="heading">{item.name}</h3>
+        </header>
+        <div class="image">
+          {item.images[0] ? (
+            <img src={item.images[0]} alt={item.name} width="480" />
+          ) : (
+            <img src={placeholder.src} alt={item.name} width="500" />
+          )}
+        </div>
+        <div class="content">
+          {item.priceLabel && <div class="price">{item.priceLabel}</div>}
+          {item.notes && <div class="notes" set:html={item.notes} />}
+        </div>
+        <footer class="footer">
+          {(item.url || item.links.length > 0) && (
+            <ul class="links">
+              {item.url && (
+                <li class="link"><a href={item.url}>Buy</a></li>
+              )}
+              {item.links.map((link) => (
+                <li class="link"><a href={link.href}>{link.label}</a></li>
+              ))}
+            </ul>
+          )}
+        </footer>
+      </article>
+    ))}
+  </div>
 </BaseLayout>
+
+<script>
+  const buttons = document.querySelectorAll<HTMLButtonElement>(
+    '.tag-filter button'
+  );
+  const articles = document.querySelectorAll<HTMLElement>('article[data-tags]');
+
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const tag = button.dataset.tag ?? '';
+      buttons.forEach((b) => b.classList.toggle('is-active', b === button));
+      articles.forEach((article) => {
+        const tags = JSON.parse(article.dataset.tags ?? '[]') as string[];
+        article.hidden = tag !== '' && !tags.includes(tag);
+      });
+    });
+  });
+</script>
+
+<style>
+  [hidden] {
+    display: none !important;
+  }
+
+  .tag-filter ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gutter-sm);
+    margin: 0 0 var(--gutter-md);
+    padding: 0;
+    list-style-type: none;
+  }
+
+  .tag-filter .is-active {
+    font-weight: bold;
+  }
+
+  .tag-filter button {
+    cursor: pointer;
+  }
+
+  .wish-list {
+    gap: var(--gutter-sm);
+
+    &.list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    &.grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+
+      /* align-content: stretch; */
+    }
+
+    .item {
+      padding: var(--gutter-md);
+      border: 1px solid #ddd;
+      border-radius: 20px;
+
+      .wish-list.list & {
+        display: grid;
+        grid-template-columns: 1fr 9fr;
+        grid-template-rows: auto auto 1fr;
+        grid-template-areas:
+          "image header"
+          "image content"
+          "image footer";
+        column-gap: var(--gutter-md);
+      }
+
+      .wish-list.grid & {
+        display: flex;
+        flex-direction: column;
+      }
+    }
+    .header {
+      .wish-list.list & {
+        grid-area: header;
+      }
+
+      .wish-list.grid & {
+        order: 2;
+      }
+    }
+
+    .heading {
+      margin: 0;
+      font-size: inherit;
+      line-height: normal;
+    }
+
+    .image {
+      padding: var(--gutter-md);
+
+      img {
+        display: block;
+        aspect-ratio: 1;
+        object-fit: contain;
+      }
+
+      .wish-list.list & {
+        grid-area: image;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        margin: calc(var(--gutter-md) * -1) 0 calc(var(--gutter-md) * -1) calc(var(--gutter-md) * -1);
+        border-right: 1px solid #ddd;
+      }
+
+      .wish-list.grid & {
+        order: 1;
+        margin: calc(var(--gutter-md) * -1) calc(var(--gutter-md) * -1) var(--gutter-md);
+        aspect-ratio: 1;
+        border-bottom: 1px solid #ddd;
+      }
+    }
+
+    .content {
+      .wish-list.list & {
+        grid-area: content;
+      }
+
+      .wish-list.grid & {
+        order: 3;
+      }
+    }
+
+    .price {
+      margin-top: var(--gutter-xs);
+    }
+
+    .notes {
+      margin-top: var(--gutter-sm);
+      padding-top: var(--gutter-sm);
+      border-top: 1px solid #eee;
+      font-size: 0.8em;
+    }
+
+    .footer {
+      margin-top: var(--gutter-md);
+
+      .wish-list.list & {
+        grid-area: footer;
+        align-self: end;
+      }
+
+      .wish-list.grid & {
+        order: 4;
+        flex-grow: 1;
+        align-content: end;
+      }
+    }
+
+    .links {
+      display: flex;
+      gap: var(--gutter-sm);
+      margin: 0;
+      padding: 0;
+      list-style-type: none;
+
+      .link {
+        a {
+          display: inline-block;
+          padding: var(--gutter-xs) var(--gutter-sm);
+          color: var(--link-color);
+          border: 1px solid var(--link-color);
+          border-radius: 1.6em;
+          font-size: .8em;
+          text-decoration: none;
+        }
+      }
+    }
+  }
+</style>

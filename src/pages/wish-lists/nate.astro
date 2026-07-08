@@ -116,8 +116,20 @@ const items = results.filter(isFullPage).map((page) => {
   const notes =
     notesProp?.type === 'rich_text' ? renderRichText(notesProp.rich_text) : '';
 
-  return { id: page.id, name, priceLabel, url, images, tags, links, notes };
+  const priorityProp = props.Priority;
+  const priority =
+    priorityProp?.type === 'select' ? (priorityProp.select?.name ?? null) : null;
+
+  return { id: page.id, name, priceLabel, url, images, tags, links, notes, priority };
 });
+
+// Sort by priority in a custom order: High, Medium, [empty], Low.
+const priorityOrder: (string | null)[] = ['Highest', 'High', 'Medium', null, 'Low', 'Lowest'];
+const priorityRank = (priority: string | null) => {
+  const index = priorityOrder.indexOf(priority);
+  return index === -1 ? priorityOrder.indexOf(null) : index;
+};
+items.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
 
 // Cache the response at the CDN for 5 minutes to reduce Notion API calls.
 Astro.response.headers.set('Cache-Control', 'public, max-age=300');
@@ -133,16 +145,15 @@ const allTags = [...new Set(items.flatMap((item) => item.tags))].sort((a, b) =>
 
   {allTags.length > 0 && (
     <nav class="tag-filter">
-      <ul>
-        <li>
-          <button type="button" data-tag="" class="is-active">All</button>
-        </li>
+      <label for="tag-select">
+        Category:
+      </label>
+      <select id="tag-select" class="tag-select">
+        <option value="">All</option>
         {allTags.map((tag) => (
-          <li>
-            <button type="button" data-tag={tag}>{tag}</button>
-          </li>
+          <option value={tag}>{tag}</option>
         ))}
-      </ul>
+      </select>
     </nav>
   )}
 
@@ -154,7 +165,7 @@ const allTags = [...new Set(items.flatMap((item) => item.tags))].sort((a, b) =>
         </header>
         <div class="image">
           {item.images[0] ? (
-            <img src={item.images[0]} alt={item.name} width="480" />
+            <img src={item.images[0]} alt={item.name} width="500" />
           ) : (
             <img src={placeholder.src} alt={item.name} width="500" />
           )}
@@ -181,43 +192,38 @@ const allTags = [...new Set(items.flatMap((item) => item.tags))].sort((a, b) =>
 </BaseLayout>
 
 <script>
-  const buttons = document.querySelectorAll<HTMLButtonElement>(
-    '.tag-filter button'
-  );
+  const select = document.querySelector<HTMLSelectElement>('.tag-select');
   const articles = document.querySelectorAll<HTMLElement>('article[data-tags]');
 
-  buttons.forEach((button) => {
-    button.addEventListener('click', () => {
-      const tag = button.dataset.tag ?? '';
-      buttons.forEach((b) => b.classList.toggle('is-active', b === button));
-      articles.forEach((article) => {
-        const tags = JSON.parse(article.dataset.tags ?? '[]') as string[];
-        article.hidden = tag !== '' && !tags.includes(tag);
-      });
+  select?.addEventListener('change', () => {
+    const tag = select.value;
+    articles.forEach((article) => {
+      const tags = JSON.parse(article.dataset.tags ?? '[]') as string[];
+      article.hidden = tag !== '' && !tags.includes(tag);
     });
   });
 </script>
 
 <style>
+  /* TODO: Move this to global styles? */
   [hidden] {
     display: none !important;
   }
 
-  .tag-filter ul {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--gutter-sm);
+  label {
+    display: block;
+    margin-bottom: var(--gutter-xs);
+  }
+
+  select {
+    padding: var(--gutter-xs) var(--gutter-sm);
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }
+
+  .tag-filter {
     margin: 0 0 var(--gutter-md);
-    padding: 0;
-    list-style-type: none;
-  }
-
-  .tag-filter .is-active {
-    font-weight: bold;
-  }
-
-  .tag-filter button {
-    cursor: pointer;
   }
 
   .wish-list {
@@ -231,24 +237,23 @@ const allTags = [...new Set(items.flatMap((item) => item.tags))].sort((a, b) =>
     &.grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-
-      /* align-content: stretch; */
     }
 
     .item {
-      padding: var(--gutter-md);
+      padding: var(--gutter-sm);
       border: 1px solid #ddd;
       border-radius: 20px;
+      overflow: hidden;
 
       .wish-list.list & {
         display: grid;
-        grid-template-columns: 1fr 9fr;
+        grid-template-columns: minmax(100px, 1fr) 9fr;
         grid-template-rows: auto auto 1fr;
         grid-template-areas:
           "image header"
           "image content"
           "image footer";
-        column-gap: var(--gutter-md);
+        column-gap: var(--gutter-sm);
       }
 
       .wish-list.grid & {
@@ -273,7 +278,8 @@ const allTags = [...new Set(items.flatMap((item) => item.tags))].sort((a, b) =>
     }
 
     .image {
-      padding: var(--gutter-md);
+      padding: var(--gutter-sm);
+      background-color: #f5f5f5;
 
       img {
         display: block;
@@ -286,7 +292,7 @@ const allTags = [...new Set(items.flatMap((item) => item.tags))].sort((a, b) =>
         display: flex;
         flex-direction: column;
         justify-content: center;
-        margin: calc(var(--gutter-md) * -1) 0 calc(var(--gutter-md) * -1) calc(var(--gutter-md) * -1);
+        margin: calc(var(--gutter-sm) * -1) 0 calc(var(--gutter-sm) * -1) calc(var(--gutter-sm) * -1);
         border-right: 1px solid #ddd;
       }
 
@@ -336,6 +342,7 @@ const allTags = [...new Set(items.flatMap((item) => item.tags))].sort((a, b) =>
 
     .links {
       display: flex;
+      flex-wrap: wrap;
       gap: var(--gutter-sm);
       margin: 0;
       padding: 0;

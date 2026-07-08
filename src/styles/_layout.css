@@ -1,10 +1,10 @@
 .site-wrapper {
   display: flex;
   flex-direction: column;
-  gap: var(--gutter-md);
+  gap: var(--gutter-lg);
   min-height: calc(100dvh - (var(--gutter-lg) * 2));
   margin: auto;
-  padding: var(--gutter-lg);
+  padding: var(--gutter-sm);
 }
 
 .site-header {
@@ -22,6 +22,8 @@
 
 .site-footer {
   justify-self: flex-end;
+  padding-top: var(--gutter-md);
+  border-top: 1px solid #ddd;
 
   p {
     margin: 0;

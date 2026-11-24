@@ -18,9 +18,9 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "@astrojs/netlify": "8.2.1",
-    "@notionhq/client": "5.24.0",
-    "astro": "7.2.1",
+    "@astrojs/netlify": "8.2.14",
+    "@notionhq/client": "5.31.1",
+    "astro": "7.4.13",
     "lightningcss": "1.33.0",
     "normalize.css": "8.0.1"
   }

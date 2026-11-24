@@ -9,6 +9,7 @@ node_modules
 
 # Astro
 .astro
+dist/
 
 # Netlify
 .netlify
